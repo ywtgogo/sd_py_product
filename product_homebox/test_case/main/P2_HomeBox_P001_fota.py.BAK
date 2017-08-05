@@ -1,0 +1,158 @@
+#_*_ coding:utf-8 _*_
+
+import requests
+from test_lib import *
+import os,time,datetime
+from sys  import *
+
+def change_version(ver1, ver2):
+    temp = ver1
+    ver1 = ver2
+    ver2 = temp
+    pass
+
+
+if __name__ == "__main__":
+
+    honsole = SL_console("homebox")
+    honsole.log("HomeBox Img Fota Test Start Test:")
+    d1 = datetime.datetime.now()
+    d3 = d1 + datetime.timedelta(days=1)
+    expiration_time = d3.strftime('%Y-%m-%d %H:%M:%S')
+    #img_fota_url= 'http://officelinux.vicp.net:28080/fota/img-source##/HomeBox/HomeBox/M1/img/0.5.3.0##e42f590e1eee47dba8ad6bb9038638c6'
+    img_fota_url_0530 = 'http://officelinux.vicp.net:28080/fota/img-source##/HomeBox/HomeBox/M1/img/0.5.3.0'
+    img_fota_url_0509 = 'http://officelinux.vicp.net:28080/fota/img-source##/HomeBox/HomeBox/M1/img/0.5.0.9'
+    #DID
+    HB_id = "AFAFAFAF"
+    key = 'SandlacusData#@1SandlacusData#@1'
+    update_ver = '0.5.3.0'
+    now_ver    = '0.5.0.9'
+    switch_ver = 0
+    succ_cnt = 0
+    fail_cnt = 0
+    cir_cnt  = 100
+    name = 'img_'
+    size_0509 = 155648
+    size_0530 = 155648
+    block_0509 = 38
+    block_0530 = 38
+    jenkin_ver = 225
+    try:
+        while 1:
+            rule_name = name + str(cir_cnt)
+            print rule_name
+            #all bolock and size are same,needn't change
+            if update_ver == '0.5.3.0':
+                img_fota_url = img_fota_url_0530
+                img_size = size_0530
+                img_block = block_0530
+                pass
+
+            if update_ver == '0.5.0.9':
+                img_fota_url = img_fota_url_0509
+                img_size = size_0509
+                img_block = block_0509
+                pass
+
+            deviceUpdRules = {'rule_type': 'R',
+                              'upd_device_type': '01000001',
+                              'homebox_version': 'null',
+                              'sensortype': 'null',
+                              'upd_type': 1,
+                              'rule_name': rule_name,
+                              'modid': 'null',
+                              'upd_version': update_ver,
+                              'prl': '1',
+                              'img_url': img_fota_url,
+                              'img_size': img_size,
+                              'img_block_num': img_block,
+                              'para_update_info': 'null',
+                              'company_id': '1004',
+                              'version_value': now_ver,
+                              'expiration_time': expiration_time,
+                              'deviceruleitemlist': [{'judgment_type': '5',
+                                                      'judgment_name': 'device_id',
+                                                      'judgment_symbol': '1',
+                                                      'string_value': HB_id}],
+                              }
+
+           # 'deviceruleitemlist': [{'judgment_type': '5',
+           #                         'judgment_name': 'device_id',
+           #                         'judgment_symbol': '1',
+           #                         'string_value': HB_id}],
+        #http://192.168.10.235:8088/devicedp/upddevicerule/addFotaRules.do
+        #http://192.168.10.231/devicedp/upddevicerule/addFotaRules.do
+        #http://192.168.10.132:8080/devicedp/upddevicerule/addFotaRules.do
+
+            post_url = "http://192.168.10.231/devicedp/upddevicerule/addFotaRules.do"
+            post_url_encryp = "http://192.168.10.231/devicedp/upddevicerule/add.do"
+            test_url = "http://httpbin.org/post"
+            r = requests.post(post_url, json = deviceUpdRules)
+            print expiration_time
+            print deviceUpdRules
+            print r.text
+            print r.status_code
+            #print r.content
+
+            if(r.status_code != 200):
+                print "The package post fail"
+                fail_cnt += 1
+                continue
+                pass
+            time.sleep(180)
+            honsole.console_spawn.sendline("id %s" %(HB_id))
+            honsole.corres(cmd="fota", pattern=["Request is successful"])
+            print "Send fota"
+            ret = honsole.console_spawn.expect(["No device", pexpect.TIMEOUT], timeout=5)
+            if (ret != 0):
+                honsole.log("It's runing fota img updata")
+                pass
+            else:
+                honsole.log("Updata Fail")
+                fail_cnt += 1
+                continue
+                pass
+            # ret = honsole.console_spawn.expect(["img block NO", pexpect.TIMEOUT], timeout=2)
+            down_fin = honsole.console_spawn.expect(["bootloader", pexpect.TIMEOUT], timeout=2)
+            while down_fin:
+                #num = (re.findall(r'\d', honsole.console_spawn.after))
+                #print "Downloading No:%s" % num
+                down_fin = honsole.console_spawn.expect(["bootloader", pexpect.TIMEOUT], timeout=2)
+                pass
+
+            print "Restarting!!!!!!!!!!!!!!"
+            honsole.log("\t\tRestarting!!!")
+            setp = honsole.console_spawn.expect(["STEP 4", pexpect.TIMEOUT], timeout=5)
+            honsole.log("STEP 4 : Jump into app img")
+            time.sleep(10)
+            hwr = honsole.console_spawn.expect([update_ver, pexpect.TIMEOUT], timeout=10)
+            if(hwr == 0):
+                honsole.log(update_ver)
+                honsole.log("Fota Img Success")
+                switch_ver = 1
+            else:
+                honsole.log("update fail")
+                fail_cnt += 1
+                pass
+            time.sleep(180)
+            if switch_ver:
+                honsole.console_spawn.sendline("eraseall")
+                time.sleep(60)
+                os.system("python /home/jenkins/jenkins_test/tools/Jlink_merge.py /home/jenkins/jenkins_release/sl_daily_building_homebox_production/latest/origin MK24FN256xxx12 project_k24.srec hb_bootloader_k24.srec fota_node_0.bin")
+                time.sleep(10)
+                honsole.log("now it will update form %s to %s"  %(now_ver, update_ver))
+                succ_cnt += 1
+                switch_ver = 0
+
+            cir_cnt -= 1
+            time.sleep(60)
+
+            if (cir_cnt == 0) :
+                break
+                pass
+    except KeyboardInterrupt:
+        print "Succ: %d,  Fail: %d, Total: %d" %(succ_cnt, fail_cnt, (100-cir_cnt))
+        honsole.log("Succ: %d,  Fail: %d, Total: %d" %(succ_cnt, fail_cnt, (100-cir_cnt)))
+    finally:
+        honsole.console_spawn.terminate()
+        honsole.close()
